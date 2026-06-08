@@ -152,6 +152,61 @@ async function connectToWhatsApp() {
                 text: `✨ *¡EL DESTINO HA SIDO ESCRITO!* ✨\n\nBienvenido, *${nuevoJugador.nombre}*. Has iniciado tu viaje en el reino como un **${razaFormateada}**.\n\n🎒 Recibes: 💰 100 monedas de oro.\n📜 Usa \`;perfil\` para ver tus estadísticas y recursos iniciales.` 
             }, { quoted: msg });
         }
+      
+      // --- COMANDO: ;perfil ---
+        if (command === 'perfil') {
+            // Buscar al jugador en MongoDB Atlas
+            const jugador = await Player.findOne({ userId: from });
+
+            if (!jugador) {
+                return await sock.sendMessage(from, { 
+                    text: '❌ *No tienes un personaje creado aún.*\n\nUsa `;crear [raza]` para iniciar tu aventura.' 
+                }, { quoted: msg });
+            }
+
+            // Calcular el título de alineamiento según su Karma
+            let alineamiento = 'Neutral 😐';
+            if (jugador.karma >= 100) alineamiento = 'Héroe del Reino 🛡️';
+            if (jugador.karma >= 500) alineamiento = 'Paladín Divino ✨';
+            if (jugador.karma <= -100) alineamiento = 'Villano Infame 👺';
+            if (jugador.karma <= -500) alineamiento = 'Lord Oscuro 🌋';
+
+            // Armar el mensaje estético del perfil
+            const perfilTexto = `📜 *PERGAMINO DE PERSONAJE* 📜\n` +
+                `----------------------------------------\n` +
+                `👤 *Nombre:* ${jugador.nombre}\n` +
+                `🧬 *Raza:* ${jugador.raza}\n` +
+                `🎭 *Alineamiento:* ${alineamiento}\n` +
+                `🌟 *Nivel:* ${jugador.nivel}  (XP: ${jugador.xp})\n` +
+                `💰 *Oro:* ${jugador.oro} monedas\n` +
+                `----------------------------------------\n` +
+                `❤️ *Vida:* ${jugador.stats.hp} / ${jugador.stats.hpMax}\n` +
+                `⚡ *Stamina:* ${jugador.stats.stamina} / ${jugador.stats.staminaMax}\n` +
+                `🔮 *Maná:* ${jugador.stats.mana} / ${jugador.stats.manaMax}\n` +
+                `⚔️ *Ataque:* ${jugador.stats.atk}\n` +
+                `🛡️ *Defensa:* ${jugador.stats.def}\n` +
+                `----------------------------------------\n` +
+                `🗡️ *Arma:* ${jugador.equipo.arma}\n` +
+                `🛡️ *Armadura:* ${jugador.equipo.armadura}\n\n` +
+                `🎒 Usa \`;inventario\` para abrir tu mochila.`;
+
+            await sock.sendMessage(from, { text: perfilTexto }, { quoted: msg });
+        }
+      // --- COMANDO: ;help ---
+        if (command === 'help' || command === 'ayuda') {
+            const helpTexto = `⚔️ *TABLÓN DE ANUNCIOS DEL REINO* ⚔️\n` +
+                `¡Bienvenido aventurero! Aquí tienes la lista de comandos disponibles para iniciar tu travesía:\n` +
+                `----------------------------------------\n\n` +
+                `⚙️ *CONSTRUCCIÓN DE PERSONAJE*\n` +
+                `• \`;crear [raza]\` -> Elige tu destino entre: *Humano, Elfo, Enano, Orco, Demonio o Ángel*. Solo se puede usar una vez.\n` +
+                `• \`;perfil\` -> Despliega tu pergamino con nivel, oro, estadísticas, vida, energía y alineamiento.\n\n` +
+                `📖 *INFORMACIÓN*\n` +
+                `• \`;help\` -> Muestra este menú de ayuda.\n\n` +
+                `----------------------------------------\n` +
+                `*Próximamente:* Comandos de farmeo, combate, inventario y misiones de Héroe o Villano. 🌲🌋`;
+
+            await sock.sendMessage(from, { text: helpTexto }, { quoted: msg });
+        }
         
     });
 }
