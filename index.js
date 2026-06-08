@@ -7,7 +7,6 @@ const Player = require('./Player'); // Importamos tu modelo de jugador
 // ==========================================
 // 1. CONEXIÓN A MONGO DB ATLAS
 // ==========================================
-// Coloca aquí tu URI de conexión de MongoDB Atlas
 const MONGO_URI = 'mongodb+srv://PeterDonas:PeterDonas@cluster0.r5enf7h.mongodb.net/?appName=Cluster0'; 
 
 mongoose.connect(MONGO_URI)
@@ -68,27 +67,38 @@ async function connectToWhatsApp() {
         const command = args.shift().toLowerCase();
         const from = msg.key.remoteJid; 
 
+        // 1. Buscamos si el usuario ya existe en MongoDB Atlas de manera global
+        const jugador = await Player.findOne({ userId: from });
+
+        // 2. FILTRO DE NACIMIENTO GLOBAL
+        // Si no ha nacido Y no está intentando usar los comandos de nacimiento, se le frena el acceso
+        const comandosDeNacimiento = ['born', 'nacer'];
+        if (!jugador && !comandosDeNacimiento.includes(command)) {
+            return await sock.sendMessage(from, { 
+                text: '🌌 *Aún no has nacido en este reino...*\n\nUsa `;born [raza]` o `;nacer [raza]` para iniciar tu existencia.\n\n*Razas disponibles:*\n👤 Humano\n🧝 Elfo\n🧔 Enano\n👹 Orco\n😈 Demonio\n👼 Ángel' 
+            }, { quoted: msg });
+        }
+
         // ==========================================
         // 4. REPOSITORIO DE COMANDOS
         // ==========================================
 
-        // --- COMANDO: ;crear ---
-        if (command === 'crear') {
+        // --- COMANDO: ;born o ;nacer ---
+        if (comandosDeNacimiento.includes(command)) {
             const razaElegida = args[0] ? args[0].toLowerCase() : null;
             const razasValidas = ['humano', 'elfo', 'enano', 'orco', 'demonio', 'ángel', 'angel'];
 
             // Validación de formato
             if (!razaElegida || !razasValidas.includes(razaElegida)) {
                 return await sock.sendMessage(from, { 
-                    text: '⚠️ *¡Formato incorrecto!*\n\nUso: `;crear [raza]`\n\n*Razas disponibles:*\n👤 Humano\n🧝 Elfo\n🧔 Enano\n👹 Orco\n😈 Demonio\n👼 Ángel' 
+                    text: '⚠️ *¡Formato incorrecto!*\n\nUso: `;born [raza]` o `;nacer [raza]`\n\n*Razas disponibles:*\n👤 Humano\n🧝 Elfo\n🧔 Enano\n👹 Orco\n😈 Demonio\n👼 Ángel' 
                 }, { quoted: msg });
             }
 
-            // Verificar si ya existe en la base de datos de Atlas
-            const usuarioExiste = await Player.findOne({ userId: from });
-            if (usuarioExiste) {
+            // Si la consulta global encontró al jugador con éxito, bloqueamos el comando
+            if (jugador) {
                 return await sock.sendMessage(from, { 
-                    text: `❌ ¡Ya tienes un personaje creado! Eres un *${usuarioExiste.raza}* de Nivel ${usuarioExiste.nivel}.` 
+                    text: `❌ ¡Ya has nacido en este mundo! Eres un *${jugador.raza}* de Nivel ${jugador.nivel}.` 
                 }, { quoted: msg });
             }
 
@@ -127,42 +137,44 @@ async function connectToWhatsApp() {
                 razaFormateada = 'Ángel'; 
             }
 
-            // Instanciar el nuevo documento de MongoDB usando Player.js
-            const nuevoJugador = new Player({
-                userId: from,
-                nombre: msg.pushName || 'Aventurero Desconocido',
-                raza: razaFormateada,
-                stats: { 
-                    hp: hpMax, 
-                    hpMax: hpMax, 
-                    atk: atk, 
-                    def: def,
-                    stamina: staminaMax,
-                    staminaMax: staminaMax,
-                    mana: manaMax,
-                    manaMax: manaMax
-                }
-            });
+            // CONTROL DE ERRORES: El personaje solo se bloquea si el documento se guarda correctamente
+            try {
+                const nuevoJugador = new Player({
+                    userId: from,
+                    nombre: msg.pushName || 'Aventurero Desconocido',
+                    raza: razaFormateada,
+                    stats: { 
+                        hp: hpMax, 
+                        hpMax: hpMax, 
+                        atk: atk, 
+                        def: def,
+                        stamina: staminaMax,
+                        staminaMax: staminaMax,
+                        mana: manaMax,
+                        manaMax: manaMax
+                    }
+                });
 
-            // Guardar en la nube
-            await nuevoJugador.save();
+                // Guardar en la nube de MongoDB Atlas
+                await nuevoJugador.save();
 
-            // Mensaje de éxito
-            await sock.sendMessage(from, { 
-                text: `✨ *¡EL DESTINO HA SIDO ESCRITO!* ✨\n\nBienvenido, *${nuevoJugador.nombre}*. Has iniciado tu viaje en el reino como un **${razaFormateada}**.\n\n🎒 Recibes: 💰 100 monedas de oro.\n📜 Usa \`;perfil\` para ver tus estadísticas y recursos iniciales.` 
-            }, { quoted: msg });
-        }
-      
-      // --- COMANDO: ;perfil ---
-        if (command === 'perfil') {
-            // Buscar al jugador en MongoDB Atlas
-            const jugador = await Player.findOne({ userId: from });
+                // Mensaje de éxito si todo salió perfecto
+                await sock.sendMessage(from, { 
+                    text: `✨ *¡EL DESTINO HA SIDO ESCRITO!* ✨\n\nBienvenido, *${nuevoJugador.nombre}*. Has nacido en el reino como un **${razaFormateada}**.\n\n🎒 Recibes: 💰 100 monedas de oro.\n📜 Usa \`;perfil\` para ver tus estadísticas y recursos iniciales.` 
+                }, { quoted: msg });
 
-            if (!jugador) {
+            } catch (error) {
+                // Si la conexión falla en el guardado, capturamos el error para permitir reintentos
+                console.error('❌ Error crítico al guardar el nacimiento en Atlas:', error);
                 return await sock.sendMessage(from, { 
-                    text: '❌ *No tienes un personaje creado aún.*\n\nUsa `;crear [raza]` para iniciar tu aventura.' 
+                    text: '💥 *Los dioses han fallado en crear tu cuerpo corpóreo...* (Error de conexión con el plano espiritual).\n\nPor favor, vuelve a intentarlo en unos segundos.' 
                 }, { quoted: msg });
             }
+        }
+      
+        // --- COMANDO: ;perfil ---
+        if (command === 'perfil') {
+            // Ya no hacemos findOne, usamos la variable 'jugador' cargada en el filtro global
 
             // Calcular el título de alineamiento según su Karma
             let alineamiento = 'Neutral 😐';
@@ -192,16 +204,17 @@ async function connectToWhatsApp() {
 
             await sock.sendMessage(from, { text: perfilTexto }, { quoted: msg });
         }
-      // --- COMANDO: ;help ---
+
+        // --- COMANDO: ;help o ;ayuda ---
         if (command === 'help' || command === 'ayuda') {
             const helpTexto = `⚔️ *TABLÓN DE ANUNCIOS DEL REINO* ⚔️\n` +
                 `¡Bienvenido aventurero! Aquí tienes la lista de comandos disponibles para iniciar tu travesía:\n` +
                 `----------------------------------------\n\n` +
                 `⚙️ *CONSTRUCCIÓN DE PERSONAJE*\n` +
-                `• \`;crear [raza]\` -> Elige tu destino entre: *Humano, Elfo, Enano, Orco, Demonio o Ángel*. Solo se puede usar una vez.\n` +
+                `• \`;born [raza]\` o \`;nacer [raza]\` -> Elige tu destino entre: *Humano, Elfo, Enano, Orco, Demonio o Ángel*. Solo se puede usar una vez con éxito.\n` +
                 `• \`;perfil\` -> Despliega tu pergamino con nivel, oro, estadísticas, vida, energía y alineamiento.\n\n` +
                 `📖 *INFORMACIÓN*\n` +
-                `• \`;help\` -> Muestra este menú de ayuda.\n\n` +
+                `• \`;help\` o \`;ayuda\` -> Muestra este menú de ayuda.\n\n` +
                 `----------------------------------------\n` +
                 `*Próximamente:* Comandos de farmeo, combate, inventario y misiones de Héroe o Villano. 🌲🌋`;
 
